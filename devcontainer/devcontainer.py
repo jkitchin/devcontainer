@@ -14,6 +14,7 @@ It will launch the Docker image, or build the Dockerfile and launch it.
 This assumes you are running Docker.
 '''
 
+import argparse
 import os
 import jstyleson
 import subprocess
@@ -37,7 +38,13 @@ def devcontainer():
         # it here.
         devcontainer = jstyleson.loads(f.read())
 
-    # TODO: I am not sure this is the right thing to do.
+    
+    parser = argparse.ArgumentParser(description='devcontainer')
+    parser.add_argument('entrypoint', nargs='?',
+                        help='Optional entrypoint')
+
+    args = parser.parse_args()
+    
     if REMOTE_USER := devcontainer.get('remoteUser', []):
         REMOTE_USER = ['-u', REMOTE_USER]
    
@@ -49,14 +56,14 @@ def devcontainer():
     ENVS = []
     for key,val in devcontainer.get('remoteEnv', {}).items():
         ENVS += ['-e']
-        ENVS += [f'-e {key}:"{val}"']
+        ENVS += [f'{key}="{val}"']
 
-    SHELL = devcontainer.get('settings', {}).get('terminal.integrated.shell.linux', '')
-
+    ENTRYPOINT = args.entrypoint or ''
+    
     # local directory
     WORKSPACE = os.getcwd()
     # where to mount it remotely
-    WORK_DIR = devcontainer.get('workspaceFolder', '/workspace')
+    WORK_DIR = devcontainer.get('workspaceFolder', f'/workspaces/{os.path.split(WORKSPACE)[-1]}')
     
     if ws := devcontainer.get('workspaceMount', None):
         ws = ws.replace('${localWorkspaceFolder}', WORKSPACE)
@@ -80,7 +87,7 @@ def devcontainer():
                                 shell=True)
         # filter out empty strings
         cmd = [arg for arg in ['/usr/local/bin/docker', 'docker', 'run', '-it',
-                               *REMOTE_USER, *PORTS, *ENVS, *MOUNT, '-w', WORK_DIR, TAG, SHELL]
+                               *REMOTE_USER, *PORTS, *ENVS, *MOUNT, '-w', WORK_DIR, TAG, ENTRYPOINT]
                if arg]
 
         print(f'Mounting local {WORKSPACE} in {WORK_DIR} in your devcontainer.')
@@ -90,7 +97,7 @@ def devcontainer():
     elif DOCKERIMAGE:
         cmd = [arg for arg in ['/usr/local/bin/docker', 'docker', 'run', '-it',
                                *REMOTE_USER, *PORTS, *ENVS, *MOUNT, '-w', WORK_DIR,
-                               DOCKERIMAGE, SHELL] if arg]
+                               DOCKERIMAGE, ENTRYPOINT] if arg]
         print(f'Mounting local {WORKSPACE} in {WORK_DIR} in your devcontainer.')
         print(' '.join(cmd))
         os.execl(*cmd)
